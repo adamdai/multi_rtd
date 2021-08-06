@@ -24,4 +24,4 @@ class Agent:
 
     # state update
     def step(self, input):
-
+        pass

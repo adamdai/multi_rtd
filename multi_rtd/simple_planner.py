@@ -1,6 +1,7 @@
 # Publishes a set nominal trajectory to be plotted in Gazebo
 
 import rclpy
+import rospkg
 from rclpy.node import Node
 import numpy as np
 from scipy.io import loadmat
@@ -17,20 +18,23 @@ class SimplePlanner(Node):
         super().__init__('simple_planner')
         self.traj_pub = self.create_publisher(JointTrajectory, 'planner/traj', 10)
 
-        timer_period = 0.5  # seconds
+        timer_period = 10  # seconds
         self.timer = self.create_timer(timer_period, self.timer_callback)
 
+        self.ns = self.get_namespace()
+
         # init LPM object
-        filepath = '/home/talbot330-red/ros2_ws/src/multi_rtd/multi_rtd/quadrotor_linear_planning_model.mat'
-        test_lpm = loadmat(filepath)
+        script_dir = os.path.dirname(os.path.abspath('src'))
+        filepath = script_dir + '/src/multi_rtd/multi_rtd/quadrotor_linear_planning_model.mat'
+        #filepath = '/home/talbot330-red/ros2_ws/src/multi_rtd/multi_rtd/quadrotor_linear_planning_model.mat'
         lpm = LPM(filepath)
 
         # compute trajectory for some arbitrary trajectory parameters
-        v_x_0 = -1.0; a_x_0 = -1.0; v_x_peak = 2.3
-        v_y_0 = 1.0; a_y_0 = 5.0; v_y_peak = -3.3
-        v_z_0 = 0.5; a_z_0 = 2.2; v_z_peak = 2.0
+        v_x_0 = 0; a_x_0 = 0; v_x_peak = 2.3
+        v_y_0 = 0; a_y_0 = 0; v_y_peak = -3.3
+        v_z_0 = 0; a_z_0 = 0; v_z_peak = 2.0
 
-        t2start = [0, 0] # seconds, nanoseconds 
+        t2start = 0 # seconds
 
         k = np.array([[v_x_0, a_x_0, v_x_peak],
                     [v_y_0, a_y_0, v_y_peak],

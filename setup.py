@@ -20,7 +20,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'simple_planner = multi_rtd.simple_planner:main'
+            'simple_planner = multi_rtd.simple_planner:main',
+            'multi_planner = multi_rtd.multi_planner:main',
         ],
     },
 )

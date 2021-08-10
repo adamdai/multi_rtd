@@ -25,7 +25,7 @@ class SimplePlanner(Node):
 
         # init LPM object
         script_dir = os.path.dirname(os.path.abspath('src'))
-        filepath = script_dir + '/src/multi_rtd/multi_rtd/quadrotor_linear_planning_model.mat'
+        filepath = script_dir + '/src/px4_multi_agent_planning/multi_rtd/multi_rtd/quadrotor_linear_planning_model.mat'
         #filepath = '/home/talbot330-red/ros2_ws/src/multi_rtd/multi_rtd/quadrotor_linear_planning_model.mat'
         lpm = LPM(filepath)
 
@@ -48,6 +48,7 @@ class SimplePlanner(Node):
 
     # publish the trajectory
     def timer_callback(self):
+        print(" publishing trajectory")
         self.traj_pub.publish(self.traj_msg)
 
 

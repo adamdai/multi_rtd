@@ -373,7 +373,7 @@ def main(args=None):
 
     # get LPM path
     script_dir = os.path.dirname(os.path.abspath('src'))
-    lpm_path = script_dir + '/src/multi_rtd/multi_rtd/quadrotor_linear_planning_model.mat'
+    lpm_path = script_dir + '/src/px4_multi_agent_planning/multi_rtd/multi_rtd/quadrotor_linear_planning_model.mat'
     
     multi_planner = MultiPlanner(lpm_path)
 

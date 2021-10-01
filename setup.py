@@ -22,6 +22,7 @@ setup(
         'console_scripts': [
             'simple_planner = multi_rtd.simple_planner:main',
             'multi_planner = multi_rtd.multi_planner:main',
+            'trajectory_sampler = multi_rtd.trajectory_sampler:main',
         ],
     },
 )

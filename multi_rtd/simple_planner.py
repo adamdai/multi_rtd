@@ -8,9 +8,9 @@ from scipy.io import loadmat
 import os
 
 from LPM import LPM
-from planner_utils import wrap_traj_msg
+from planner_utils import wrap_traj_msg, wrap_robot_traj_msg
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
-
+from multi_rtd_interfaces.msg import RobotTrajectory
 
 class SimplePlanner(Node):
 
@@ -43,6 +43,7 @@ class SimplePlanner(Node):
         traj = lpm.compute_trajectory(k)
 
         # convert to JointTrajectory msg 
+        #self.traj_msg = wrap_robot_traj_msg(traj,t2start,self.ns)
         self.traj_msg = wrap_traj_msg(traj,t2start)
 
 

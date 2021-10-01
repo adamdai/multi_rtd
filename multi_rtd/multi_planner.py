@@ -8,6 +8,7 @@ from planner_utils import *
 from nav_msgs.msg import Path
 from geometry_msgs.msg import PointStamped
 from multi_rtd_interfaces.msg import RobotTrajectory
+from std_msgs.msg import Bool
 
 class MultiPlanner(Node):
     """Multi-agent Planner
@@ -19,15 +20,18 @@ class MultiPlanner(Node):
         """ --------------- Timing and global variables --------------- """
         self.T_REPLAN = 0.3 # [s] amount of time between replans
         self.T_PLAN = 0.1 # [s] amount of time allotted for planning itself (remaining time allotted for checking)
-        self.N_BOTS = 3 # total number of bots in the sim
+        self.N_BOTS = 2 # total number of bots in the sim
         self.N_DIM = 3
         self.R_BOT = 0.25 # [m]
         self.XY_BOUNDS  = [-5.0, 5.0] # [m]
         self.Z_BOUNDS = [0.0, 5.0] # [m]
 
         # get namespace
-        # self.name = self.get_namespace()
-        self.name = '/ibqr1/'
+        self.name = self.get_name()
+        print(self.name)
+
+        # start signal
+        self.start = False
 
         # replan timer
         self.replan_timer = self.create_timer(self.T_REPLAN, self.replan)
@@ -35,18 +39,22 @@ class MultiPlanner(Node):
 
         """ --------------- Publishers and Subscribers --------------- """
         # publisher for planned trajectory
-        self.traj_pub = self.create_publisher(RobotTrajectory, self.name + 'planner/traj', 10)
+        self.traj_pub = self.create_publisher(RobotTrajectory, '/' + self.name + '/planner/traj', 10)
 
         # subscriber for goal position
-        goal_sub = self.create_subscription(PointStamped, self.name + 'planner/goal', self.goal_callback, 10)
-        self.goal_pub = self.create_publisher(PointStamped, self.name + 'planner/goal', 10)
+        goal_sub = self.create_subscription(PointStamped, '/' + self.name + '/planner/goal', self.goal_callback, 10)
+        self.goal_pub = self.create_publisher(PointStamped, '/' + self.name + '/planner/goal', 10)
+
+        # subscriber for start signal
+        start_sub = self.create_subscription(Bool, '/simulation/start', self.start_callback, 10)
 
         # subscribers for peer robot plans
         plan_subs = {}
-        peer_bots = ['/ibqr' + str(i) + '/' for i in range(1,self.N_BOTS+1)]
+        peer_bots = ['iris_' + str(i) for i in range(self.N_BOTS)]
+        print(peer_bots)
         peer_bots.remove(self.name)
         for peer_bot in peer_bots:
-            topic = peer_bot + 'planner/traj'
+            topic = '/' + peer_bot + '/planner/traj'
             plan_subs[peer_bot] = self.create_subscription(RobotTrajectory, topic, self.traj_callback, 10)
 
         """ --------------- Planning variables --------------- """
@@ -56,9 +64,13 @@ class MultiPlanner(Node):
         self.n_plan_max = 10000 # max number of plans to evaluate
 
         # initial conditions [m],[m/s],[m/s^2]
-        self.p_0 = np.zeros((3,1))
-        self.p_0[0] = 0; self.p_0[1] = 0
-        self.p_0[:2] = np.reshape(np.random.uniform(self.XY_BOUNDS[0], self.XY_BOUNDS[1], 2), (2,1))
+        # hard-coded initial conditions and goals for now:
+        if self.name == 'iris_0':
+            self.p_0 = np.array([[0],[0],[0]])
+            self.p_goal = np.array([[0],[3],[2]])
+        elif self.name == 'iris_1':
+            self.p_0 = np.array([[0],[3],[0]])
+            self.p_goal = np.array([[0],[0],[2]])
         self.v_0 = np.zeros((3,1))
         self.a_0 = np.zeros((3,1))
 
@@ -84,9 +96,9 @@ class MultiPlanner(Node):
         self.delta_v_peak_max = 3.0 # delta from initial velocity constraint
 
         # goal [m]
-        self.p_goal = np.zeros((3,1))
-        self.p_goal[:2] = np.reshape(np.random.uniform(self.XY_BOUNDS[0], self.XY_BOUNDS[1], 2), (2,1))
-        self.p_goal[2] = np.random.uniform(self.Z_BOUNDS[0], self.Z_BOUNDS[1])
+        # self.p_goal = np.zeros((3,1))
+        # self.p_goal[:2] = np.reshape(np.random.uniform(self.XY_BOUNDS[0], self.XY_BOUNDS[1], 2), (2,1))
+        # self.p_goal[2] = np.random.uniform(self.Z_BOUNDS[0], self.Z_BOUNDS[1])
         #self.p_goal = np.array([[5],[5],[0]])
         self.flag_new_goal = False
         self.r_goal_reached = 0.3 # [m] stop planning when within this dist of goal
@@ -95,7 +107,10 @@ class MultiPlanner(Node):
     def get_time(self):
         """Time since class was initialized.
         
-        Rounded to nearest t_sample.
+        Returns
+        -------
+        float
+            Time since class was initialized in seconds.
         
         """
         return self.get_abs_time() - self.init_time
@@ -126,9 +141,18 @@ class MultiPlanner(Node):
         Stores desired goal.
 
         """
-        rospy.loginfo("Goal Callback")
+        self.get_logger().info("Goal Callback")
         self.p_goal = np.array([[data.point.x], [data.point.y], [data.point.z]])
         self.flag_new_goal = True
+
+
+    def start_callback(self, msg):
+        """Start subscriber callback.
+
+        Sets start flag.
+
+        """
+        self.start = msg.data
 
 
     def traj_callback(self, data):
@@ -137,13 +161,14 @@ class MultiPlanner(Node):
         Save peer committed plan.
 
         """
+        print("Received peer trajectory")
         bot_name = data.robot_name
         traj = data.trajectory
         x_pos = traj.points[0].positions
         y_pos = traj.points[1].positions
         z_pos = traj.points[2].positions
         t2start = traj.points[0].time_from_start 
-        time = self.lpm.time + t2start.to_sec()
+        time = self.lpm.time + t2start.sec + t2start.nanosec / 1e9
         plan = np.vstack((time, x_pos, y_pos, z_pos))
         # save plan and time received 
         self.committed_plans[bot_name] = (plan, self.get_time())
@@ -296,73 +321,75 @@ class MultiPlanner(Node):
         Perform trajectory optimization, checking, and rechecking 
 
         """
-        # start timer
-        t_start_plan = self.get_time()
-        self.get_logger().info(str(t_start_plan))
+        # only replan if start signal is set
+        if self.start:
+            # start timer
+            t_start_plan = self.get_time()
+            self.get_logger().info(str(t_start_plan))
 
-        # get current plan
-        T_old = self.commit_plan[0,:]
-        X_old = self.commit_plan[1:,:]
+            # get current plan
+            T_old = self.commit_plan[0,:]
+            X_old = self.commit_plan[1:,:]
 
-        # time to start the trajectory from (relative to absolute time)
-        t2start = self.get_abs_time() + self.T_REPLAN 
+            # time to start the trajectory from (relative to absolute time)
+            t2start = self.get_abs_time() + self.T_REPLAN 
 
-        # create time vector for the new plan
-        T_new = self.lpm.time + t2start
+            # create time vector for the new plan
+            T_new = self.lpm.time + t2start
 
-        # find a new v_peak
-        v_peak = self.traj_opt(t_start_plan, T_old, X_old, t2start, T_new)
+            # find a new v_peak
+            v_peak = self.traj_opt(t_start_plan, T_old, X_old, t2start, T_new)
 
-        # if no new plan found continue previous plan
-        if v_peak is None:
-            self.get_logger().info("Failed to find a new plan")
-            # select parts of the previous plan that are yet to be executed
-            T_log = T_old >= self.get_time()
+            # if no new plan found continue previous plan
+            if v_peak is None:
+                self.get_logger().info("Failed to find a new plan")
+                # select parts of the previous plan that are yet to be executed
+                T_log = T_old >= self.get_time()
 
-            self.get_logger().info(str(T_log.shape))
-            self.get_logger().info(str(T_old.shape))
-            self.get_logger().info(str((T_old[-1] + self.T_PLAN).shape))
+                self.get_logger().info(str(T_log.shape))
+                self.get_logger().info(str(T_old.shape))
+                self.get_logger().info(str((T_old[-1] + self.T_PLAN).shape))
 
-            # increase the length of the old plan by t_plan
-            self.commit_plan[0,:] = np.hstack((T_old[T_log], T_old[-1] + self.T_PLAN))
-            self.commit_plan[1:,:] = np.hstack((X_old[:,T_log], X_old[:,-1]))
+                # increase the length of the old plan by t_plan
+                self.commit_plan[0,:] = np.hstack((T_old[T_log], T_old[-1] + self.T_PLAN))
+                self.commit_plan[1:,:] = np.hstack((X_old[:,T_log], X_old[:,-1]))
 
-            return
+                return
 
-        # otherwise, create a new pending plan and enter checking phase
-        else:  
-            self.get_logger().info("Found a new plan")
-            k = np.hstack((self.v_0, self.a_0, v_peak))
-            p,v,a = self.lpm.compute_trajectory(k) 
-            p = p + self.p_0 # translate to p_0
-            self.pend_plan[0,:] = T_new
-            self.pend_plan[1:,:] = np.vstack((p,v,a))
+            # otherwise, create a new pending plan and enter checking phase
+            else:  
+                self.get_logger().info("Found a new plan")
+                k = np.hstack((self.v_0, self.a_0, v_peak))
+                p,v,a = self.lpm.compute_trajectory(k) 
+                p = p + self.p_0 # translate to p_0
+                self.pend_plan[0,:] = T_new
+                self.pend_plan[1:,:] = np.vstack((p,v,a))
 
-            # get checking start time
-            t_start_check = self.get_time()
+                # get checking start time
+                t_start_check = self.get_time()
 
-            # check pending plan against recently committed plans
-            if self.check(t_start_plan):
-                self.get_logger().info("Check succeeded")
-                # if check passes, do final recheck
-                if self.recheck(t_start_check):
-                    self.get_logger().info("Recheck succeeded")
-                    # planning has succeeded! commit and publish the plan
-                    self.commit_plan[0,:] = self.pend_plan[0,:]
-                    self.commit_plan[1:,:] = self.pend_plan[1:,:]
-                    traj_msg = wrap_robot_traj_msg((p,v,a), t2start, self.name)
-                    self.traj_pub.publish(traj_msg)
+                # check pending plan against recently committed plans
+                if self.check(t_start_plan):
+                    #self.get_logger().info("Check succeeded")
+                    # if check passes, do final recheck
+                    if self.recheck(t_start_check):
+                        #self.get_logger().info("Recheck succeeded")
+                        # planning has succeeded! commit and publish the plan
+                        self.commit_plan[0,:] = self.pend_plan[0,:]
+                        self.commit_plan[1:,:] = self.pend_plan[1:,:]
+                        traj_msg = wrap_robot_traj_msg((p,v,a), t2start, self.name)
+                        self.traj_pub.publish(traj_msg)
+                
+                # if either check or recheck fails, bail out and revert to previous plan
+                # TODO?
+
+                return
             
-            # if either check or recheck fails, bail out and revert to previous plan
-            # TODO?
-
-            return
-        
-        # end if current committed trajectory endpoint reaches goal
-        # if np.linalg.norm(np.reshape(self.commit_plan[1:4,-1], (3,1)) - self.p_goal) < self.r_goal_reached:
-        #     rospy.loginfo("Successfully planned trajectory to goal...exiting")
-        #     rospy.signal_shutdown("Planner finished")
-        # return
+            # end if current committed trajectory endpoint reaches goal
+            # if np.linalg.norm(np.reshape(self.commit_plan[1:4,-1], (3,1)) - self.p_goal) < self.r_goal_reached:
+            #     rospy.loginfo("Successfully planned trajectory to goal...exiting")
+            #     rospy.signal_shutdown("Planner finished")
+            # return
 
 
 

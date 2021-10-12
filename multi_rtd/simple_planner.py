@@ -16,7 +16,7 @@ class SimplePlanner(Node):
 
     def __init__(self):
         super().__init__('simple_planner')
-        self.traj_pub = self.create_publisher(JointTrajectory, 'planner/traj', 10)
+        self.traj_pub = self.create_publisher(RobotTrajectory, 'planner/traj', 10)
 
         timer_period = 10  # seconds
         self.timer = self.create_timer(timer_period, self.timer_callback)
@@ -42,9 +42,9 @@ class SimplePlanner(Node):
 
         traj = lpm.compute_trajectory(k)
 
-        # convert to JointTrajectory msg 
-        #self.traj_msg = wrap_robot_traj_msg(traj,t2start,self.ns)
-        self.traj_msg = wrap_traj_msg(traj,t2start)
+        # convert to RobotTrajectory msg 
+        self.traj_msg = wrap_robot_traj_msg(traj,t2start,self.ns)
+        #self.traj_msg = wrap_traj_msg(traj,t2start)
 
 
     # publish the trajectory

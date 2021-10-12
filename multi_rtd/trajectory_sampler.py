@@ -8,7 +8,7 @@ from scipy.io import loadmat
 import os
 
 from LPM import LPM
-from planner_utils import wrap_robot_traj_msg
+from planner_utils import wrap_traj_msg
 from std_msgs.msg import Bool 
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from multi_rtd_interfaces.msg import RobotTrajectory
@@ -17,7 +17,7 @@ class TrajectorySampler(Node):
 
     def __init__(self):
         super().__init__('simple_planner')
-        self.traj_pub = self.create_publisher(RobotTrajectory, 'planner/traj', 10)
+        self.traj_pub = self.create_publisher(JointTrajectory, 'planner/traj', 10)
 
         self.at_home_sub = self.create_subscription(Bool, 'at_home', self.at_home_callback, 10)
 
@@ -82,7 +82,7 @@ class TrajectorySampler(Node):
         # hard-coded trajectory
         if self.run_count < 10:
             print(" publishing trajectory", self.run_count)
-            traj_msg = wrap_robot_traj_msg(self.traj, self.t2start, self.ns)
+            traj_msg = wrap_traj_msg(self.traj, self.t2start)
             self.traj_pub.publish(traj_msg)
             self.run_count = self.run_count + 1
         else:

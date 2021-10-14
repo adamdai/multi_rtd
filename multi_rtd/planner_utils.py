@@ -5,6 +5,7 @@ import numpy as np
 
 from builtin_interfaces.msg import Duration
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
+from std_msgs.msg import Header
 from multi_rtd_interfaces.msg import RobotTrajectory
 
 def round_to(value, interval):
@@ -65,6 +66,7 @@ def wrap_traj_msg(traj, t2start):
 
     p,v,a = traj
     traj_msg = JointTrajectory()
+    header = Header()
 
     t2start_sec = int(t2start)
     t2start_nanosec = int(1e9 * (t2start - t2start_sec))
@@ -95,6 +97,8 @@ def wrap_traj_msg(traj, t2start):
 
     traj_msg.points = [jtp_x, jtp_y, jtp_z]
     traj_msg.joint_names = ['x','y','z']
+
+    traj_msg.header = header
 
     return traj_msg
 

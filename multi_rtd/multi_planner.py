@@ -18,8 +18,8 @@ class MultiPlanner(Node):
     def __init__(self, lpm_file):
         super().__init__('multi_planner')
         """ --------------- Timing and global variables --------------- """
-        self.T_REPLAN = 0.3 # [s] amount of time between replans
-        self.T_PLAN = 0.1 # [s] amount of time allotted for planning itself (remaining time allotted for checking)
+        self.T_REPLAN = 1.0 # [s] amount of time between replans
+        self.T_PLAN = 0.7 # [s] amount of time allotted for planning itself (remaining time allotted for checking)
         self.N_BOTS = 2 # total number of bots in the sim
         self.N_DIM = 3
         self.R_BOT = 0.25 # [m]
@@ -35,7 +35,6 @@ class MultiPlanner(Node):
 
         # replan timer
         self.replan_timer = self.create_timer(self.T_REPLAN, self.replan)
-        self.init_time = self.get_abs_time()
 
         """ --------------- Publishers and Subscribers --------------- """
         # publisher for planned trajectory
@@ -153,6 +152,7 @@ class MultiPlanner(Node):
 
         """
         self.start = msg.data
+        self.init_time = self.get_abs_time()
 
 
     def traj_callback(self, data):
@@ -240,6 +240,8 @@ class MultiPlanner(Node):
         # get number of potentially feasible sample to iterate through
         n_V_peak = V_peak.shape[1]
 
+        self.get_logger().info("n_V_peak:" + str(n_V_peak))
+
         # calculate the endpoints for the sample v_peaks
         lpm_p_final = self.lpm.p_mat[:,-1]
         p_from_v_0_and_a_0 = np.reshape(np.dot(np.hstack((self.v_0, self.a_0)), lpm_p_final[:2]),(3,1)) + self.p_0
@@ -253,7 +255,7 @@ class MultiPlanner(Node):
         # iterate through V_peaks until we find a feasible one
         idx_v_peak = 0
         while (idx_v_peak <= n_V_peak) and (self.get_time() - t_start_plan < self.T_PLAN):
-            
+        
             # get trajectory positions for current v_peak
             v_peak = np.reshape(V_peak[:,idx_v_peak], (3,1))
             P_idx = np.matmul(np.hstack((self.v_0, self.a_0, v_peak)), self.lpm.p_mat) + np.tile(self.p_0, (1,self.n_t_plan))
@@ -351,6 +353,7 @@ class MultiPlanner(Node):
                 self.get_logger().info(str((T_old[-1] + self.T_PLAN).shape))
 
                 # increase the length of the old plan by t_plan
+                # TODO: check to make sure this keeps the plan the same length
                 self.commit_plan[0,:] = np.hstack((T_old[T_log], T_old[-1] + self.T_PLAN))
                 self.commit_plan[1:,:] = np.hstack((X_old[:,T_log], X_old[:,-1]))
 

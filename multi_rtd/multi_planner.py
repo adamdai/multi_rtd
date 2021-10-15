@@ -8,7 +8,8 @@ from planner_utils import *
 from nav_msgs.msg import Path
 from geometry_msgs.msg import PointStamped
 from multi_rtd_interfaces.msg import RobotTrajectory
-from std_msgs.msg import Bool
+from std_srvs.srv import SetBool
+from px4_msgs.msg import VehicleOdometry
 
 class MultiPlanner(Node):
     """Multi-agent Planner
@@ -25,6 +26,7 @@ class MultiPlanner(Node):
         self.R_BOT = 0.25 # [m]
         self.XY_BOUNDS  = [-5.0, 5.0] # [m]
         self.Z_BOUNDS = [0.0, 5.0] # [m]
+        self.INIT_OFFSET = np.zeros((3,1))
 
         # get namespace
         self.name = self.get_name()
@@ -36,6 +38,9 @@ class MultiPlanner(Node):
         # replan timer
         self.replan_timer = self.create_timer(self.T_REPLAN, self.replan)
 
+        # odometry
+        self.odometry = VehicleOdometry()
+
         """ --------------- Publishers and Subscribers --------------- """
         # publisher for planned trajectory
         self.traj_pub = self.create_publisher(RobotTrajectory, '/' + self.name + '/planner/traj', 10)
@@ -44,8 +49,11 @@ class MultiPlanner(Node):
         goal_sub = self.create_subscription(PointStamped, '/' + self.name + '/planner/goal', self.goal_callback, 10)
         self.goal_pub = self.create_publisher(PointStamped, '/' + self.name + '/planner/goal', 10)
 
-        # subscriber for start signal
-        start_sub = self.create_subscription(Bool, '/simulation/start', self.start_callback, 10)
+        # service for start signal
+        start_sub = self.create_service(SetBool, 'simulation_start', self.start_callback)
+
+        # subscriber for odometry
+        odom_sub = self.create_subscription(VehicleOdometry, '/' + self.name + '/fmu/vehicle_odometry/out', self.odom_callback, 10)
 
         # subscribers for peer robot plans
         plan_subs = {}
@@ -65,11 +73,13 @@ class MultiPlanner(Node):
         # initial conditions [m],[m/s],[m/s^2]
         # hard-coded initial conditions and goals for now:
         if self.name == 'iris_0':
-            self.p_0 = np.array([[0],[0],[2]])
-            self.p_goal = np.array([[0],[3],[2]])
+            self.p_0 = np.array([[0],[0],[0]])
+            self.INIT_OFFSET = np.array([[0],[0],[0]])
+            self.p_goal = np.array([[10],[0],[0]])
         elif self.name == 'iris_1':
-            self.p_0 = np.array([[0],[3],[2]])
-            self.p_goal = np.array([[0],[0],[2]])
+            self.p_0 = np.array([[0],[3],[0]])
+            self.INIT_OFFSET = np.array([[0],[3],[0]])
+            self.p_goal = np.array([[0],[0],[0]])
         self.v_0 = np.zeros((3,1))
         self.a_0 = np.zeros((3,1))
 
@@ -145,15 +155,26 @@ class MultiPlanner(Node):
         self.flag_new_goal = True
 
 
-    def start_callback(self, msg):
-        """Start subscriber callback.
+    def start_callback(self, request, response):
+        """Start service callback.
 
         Sets start flag.
-        Use 
+        Use ros2 service call /simulation_start std_srvs/srv/SetBool "data: True"
 
         """
-        self.start = msg.data
+        self.start = request.data
         self.init_time = self.get_abs_time()
+        response.success = True
+        return response
+
+
+    def odom_callback(self, msg):
+        """Odometry subscriber callback.
+
+        Update stored odometry. 
+
+        """
+        self.odometry = msg
 
 
     def traj_callback(self, data):
@@ -196,6 +217,14 @@ class MultiPlanner(Node):
         return True
 
 
+    def get_initial_conditions(self):
+        o = self.odometry
+        p_0 = np.array([[o.x],[o.y],[o.z]])
+        v_0 = np.array([[o.vx],[o.vy],[o.vz]])
+        a_0 = np.zeros((3,1))
+        return (p_0,v_0,a_0)
+
+
     def traj_opt(self, t_start_plan, T_old, X_old, t2start, T_new):
         """Trajectory optimization.
 
@@ -222,8 +251,10 @@ class MultiPlanner(Node):
 
         """
         # index current plan to get initial condition for new plan
+        print(T_old)
         x_0 = trajectory_closest_point(t2start, T_old, X_old)
         # update initial conditions
+        #self.p_0,self.v_0,self.a_0 = self.get_initial_conditions()
         self.p_0 = np.reshape(x_0[:self.N_DIM], (3,1))
         self.v_0 = np.reshape(x_0[self.N_DIM:2*self.N_DIM], (3,1))
         self.a_0 = np.reshape(x_0[2*self.N_DIM:3*self.N_DIM], (3,1))
@@ -240,8 +271,6 @@ class MultiPlanner(Node):
 
         # get number of potentially feasible sample to iterate through
         n_V_peak = V_peak.shape[1]
-
-        self.get_logger().info("n_V_peak:" + str(n_V_peak))
 
         # calculate the endpoints for the sample v_peaks
         lpm_p_final = self.lpm.p_mat[:,-1]
@@ -328,14 +357,15 @@ class MultiPlanner(Node):
         if self.start:
             # start timer
             t_start_plan = self.get_time()
-            self.get_logger().info(str(t_start_plan))
+            print("t_start_plan:", t_start_plan)
 
             # get current plan
             T_old = self.commit_plan[0,:]
             X_old = self.commit_plan[1:,:]
 
             # time to start the trajectory from (relative to absolute time)
-            t2start = self.get_abs_time() + self.T_REPLAN 
+            t2start = self.get_time() + self.T_REPLAN 
+            print("t2start:", t2start)
 
             # create time vector for the new plan
             T_new = self.lpm.time + t2start
@@ -382,6 +412,7 @@ class MultiPlanner(Node):
                         self.commit_plan[0,:] = self.pend_plan[0,:]
                         self.commit_plan[1:,:] = self.pend_plan[1:,:]
                         traj_msg = wrap_robot_traj_msg((p,v,a), t2start, self.name)
+                        print("Publishing trajectory")
                         self.traj_pub.publish(traj_msg)
                 
                 # if either check or recheck fails, bail out and revert to previous plan

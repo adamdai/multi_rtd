@@ -8,7 +8,7 @@ from planner_utils import *
 from nav_msgs.msg import Path
 from geometry_msgs.msg import PointStamped
 from multi_rtd_interfaces.msg import RobotTrajectory
-from std_srvs.srv import SetBool
+from std_msgs.msg import Bool
 from px4_msgs.msg import VehicleOdometry
 
 class MultiPlanner(Node):
@@ -50,7 +50,7 @@ class MultiPlanner(Node):
         self.goal_pub = self.create_publisher(PointStamped, '/' + self.name + '/planner/goal', 10)
 
         # service for start signal
-        start_sub = self.create_service(SetBool, 'simulation_start', self.start_callback)
+        start_sub = self.create_subscription(Bool, '/simulation_start', self.start_callback, 10)
 
         # subscriber for odometry
         odom_sub = self.create_subscription(VehicleOdometry, '/' + self.name + '/fmu/vehicle_odometry/out', self.odom_callback, 10)
@@ -155,17 +155,16 @@ class MultiPlanner(Node):
         self.flag_new_goal = True
 
 
-    def start_callback(self, request, response):
-        """Start service callback.
+    def start_callback(self, msg):
+        """Start subscriber callback.
 
         Sets start flag.
         Use ros2 service call /simulation_start std_srvs/srv/SetBool "data: True"
+        ros2 topic pub --once /simulation_start std_msgs/msg/Bool "data: True"
 
         """
-        self.start = request.data
+        self.start = msg.data
         self.init_time = self.get_abs_time()
-        response.success = True
-        return response
 
 
     def odom_callback(self, msg):

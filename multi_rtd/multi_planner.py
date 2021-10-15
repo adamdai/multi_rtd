@@ -65,10 +65,10 @@ class MultiPlanner(Node):
         # initial conditions [m],[m/s],[m/s^2]
         # hard-coded initial conditions and goals for now:
         if self.name == 'iris_0':
-            self.p_0 = np.array([[0],[0],[0]])
+            self.p_0 = np.array([[0],[0],[2]])
             self.p_goal = np.array([[0],[3],[2]])
         elif self.name == 'iris_1':
-            self.p_0 = np.array([[0],[3],[0]])
+            self.p_0 = np.array([[0],[3],[2]])
             self.p_goal = np.array([[0],[0],[2]])
         self.v_0 = np.zeros((3,1))
         self.a_0 = np.zeros((3,1))
@@ -149,6 +149,7 @@ class MultiPlanner(Node):
         """Start subscriber callback.
 
         Sets start flag.
+        Use 
 
         """
         self.start = msg.data

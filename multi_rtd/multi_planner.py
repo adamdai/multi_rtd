@@ -163,8 +163,9 @@ class MultiPlanner(Node):
         ros2 topic pub --once /simulation_start std_msgs/msg/Bool "data: True"
 
         """
+        if not self.start:
+            self.init_time = self.get_abs_time()
         self.start = msg.data
-        self.init_time = self.get_abs_time()
 
 
     def odom_callback(self, msg):

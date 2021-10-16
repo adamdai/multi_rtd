@@ -37,6 +37,7 @@ class MultiPlanner(Node):
 
         # replan timer
         self.replan_timer = self.create_timer(self.T_REPLAN, self.replan)
+        self.init_time = 0
 
         # odometry
         self.odometry = VehicleOdometry()

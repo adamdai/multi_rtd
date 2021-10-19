@@ -7,7 +7,7 @@ from LPM import LPM
 from planner_utils import *
 from nav_msgs.msg import Path
 from geometry_msgs.msg import PointStamped
-from multi_rtd_interfaces.msg import RobotTrajectory
+from multi_rtd_interfaces.msg import RobotTrajectory, CylinderArray
 from std_msgs.msg import Bool
 from px4_msgs.msg import VehicleOdometry
 
@@ -23,7 +23,7 @@ class MultiPlanner(Node):
         self.T_PLAN = 0.7 # [s] amount of time allotted for planning itself (remaining time allotted for checking)
         self.N_BOTS = 2 # total number of bots in the sim
         self.N_DIM = 3
-        self.R_BOT = 1.0 # [m]
+        self.R_BOT = 0.25 # [m]
         self.XY_BOUNDS  = [-5.0, 5.0] # [m]
         self.Z_BOUNDS = [0.0, 5.0] # [m]
         self.INIT_OFFSET = np.zeros((3,1))
@@ -47,6 +47,8 @@ class MultiPlanner(Node):
         self.traj_pub = self.create_publisher(RobotTrajectory, '/' + self.name + '/planner/traj', 10)
 
         # subscriber for goal position
+        # should be able to publish a goal from command line with something like this: 
+        #   ros2 topic pub /iris_0/planner/goal geometry_msgs/PointStamped "{point: {x: 0.0,y: 0.0,z: 0.0}}"
         goal_sub = self.create_subscription(PointStamped, '/' + self.name + '/planner/goal', self.goal_callback, 10)
         self.goal_pub = self.create_publisher(PointStamped, '/' + self.name + '/planner/goal', 10)
 
@@ -65,6 +67,9 @@ class MultiPlanner(Node):
             topic = '/' + peer_bot + '/planner/traj'
             plan_subs[peer_bot] = self.create_subscription(RobotTrajectory, topic, self.traj_callback, 10)
 
+        # subscriber for detected obstacles
+        detector_sub = self.create_subscription(CylinderArray, '/' + self.name + '/detected_cylinders', self.detector_callback, 10)
+
         """ --------------- Planning variables --------------- """
         # init LPM object
         self.lpm = LPM(lpm_file)
@@ -76,7 +81,7 @@ class MultiPlanner(Node):
         if self.name == 'iris_0':
             self.p_0 = np.array([[0],[0],[0]])
             self.INIT_OFFSET = np.array([[0],[0],[0]])
-            self.p_goal = np.array([[0],[10],[0]])
+            self.p_goal = np.array([[25],[25],[0]])
         elif self.name == 'iris_1':
             self.p_0 = np.array([[0],[0],[0]])
             self.INIT_OFFSET = np.array([[0],[3],[0]])
@@ -183,6 +188,18 @@ class MultiPlanner(Node):
 
         """
         self.odometry = msg
+    
+
+    def detector_callback(self, msg):
+        """Detector subscriber callback.
+
+        Update list of obstacles. Currently expects CylinderArray msg
+
+        """
+        print("detector callback:", msg)
+        self.obstacles = []
+        for cyl in msg.cylinders:
+            self.obstacles.append((cyl.center[:2], cyl.radius))
 
 
     def traj_callback(self, data):
@@ -220,7 +237,7 @@ class MultiPlanner(Node):
         """
         for bot in self.committed_plans.keys():
             other_plan = self.committed_plans[bot][0]
-            if not check_plan_collision(plan, other_plan, 2*self.R_BOT):
+            if not check_plan_collision(plan, other_plan, self.R_BOT):
                 return False
         return True
 
@@ -279,7 +296,6 @@ class MultiPlanner(Node):
 
         """
         # index current plan to get initial condition for new plan
-        print(T_old)
         x_0 = trajectory_closest_point(t2start, T_old, X_old)
         # update initial conditions
         #self.p_0,self.v_0,self.a_0 = self.get_initial_conditions()
@@ -320,12 +336,12 @@ class MultiPlanner(Node):
             cand_plan = np.vstack((T_new, P_idx))
 
             # check against other plans
-            check_others = self.check_peer_plan_collisions(cand_plan)
+            #check_others = self.check_peer_plan_collisions(cand_plan)
 
             # check against obstacles
-            # TODO
+            check_obs = self.check_obstacle_collisions(cand_plan)
 
-            if check_others:
+            if check_obs:
                 return v_peak
             else:
                 idx_v_peak += 1

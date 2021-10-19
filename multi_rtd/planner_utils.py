@@ -66,7 +66,7 @@ def check_obs_collision(plan, obs, r_collision):
     """
     c_obs,r_obs = obs
     traj = plan[1:4,:]
-    d_vec = np.linalg.norm(traj - c_obs, 2, 0)
+    d_vec = np.linalg.norm(traj[:2,:] - c_obs[:,None], 2, 0)
     if any(d_vec <= r_collision + r_obs):
         return False
     else:

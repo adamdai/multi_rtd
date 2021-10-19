@@ -23,7 +23,7 @@ class MultiPlanner(Node):
         self.T_PLAN = 0.7 # [s] amount of time allotted for planning itself (remaining time allotted for checking)
         self.N_BOTS = 2 # total number of bots in the sim
         self.N_DIM = 3
-        self.R_BOT = 0.25 # [m]
+        self.R_BOT = 1.0 # [m]
         self.XY_BOUNDS  = [-5.0, 5.0] # [m]
         self.Z_BOUNDS = [0.0, 5.0] # [m]
         self.INIT_OFFSET = np.zeros((3,1))
@@ -112,6 +112,13 @@ class MultiPlanner(Node):
         #self.p_goal = np.array([[5],[5],[0]])
         self.flag_new_goal = False
         self.r_goal_reached = 0.3 # [m] stop planning when within this dist of goal
+
+        """ --------------- Obstacles --------------- """
+        # Zonotope: list of [center,generator] matrices
+        # Non-zonotope (cylinder): list of (center,radius) tuples 
+        self.obstacles = []
+
+
 
 
     def get_time(self):
@@ -214,6 +221,26 @@ class MultiPlanner(Node):
         for bot in self.committed_plans.keys():
             other_plan = self.committed_plans[bot][0]
             if not check_plan_collision(plan, other_plan, 2*self.R_BOT):
+                return False
+        return True
+
+
+    def check_obstacle_collisions(self, plan):
+        """ Check a plan against the current list of nearby obstacles for collision.
+
+        Parameters
+        ----------
+        plan : np.array
+            Candidate plan to check against obstacles.
+
+        Returns
+        -------
+        bool
+            True if plan is safe, False if there is a collision.
+
+        """
+        for obs in self.obstacles:
+            if not check_obs_collision(plan, obs, 2*self.R_BOT):
                 return False
         return True
 

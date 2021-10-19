@@ -37,13 +37,37 @@ def check_plan_collision(plan_1, plan_2, r_collision):
     -------
     bool
         True if the plan is safe, False is there is a collision
-
     """
     time_1 = plan_1[0,:]; traj_1 = plan_1[1:4,:]
     time_2 = plan_2[0,:]
     traj_2 = match_trajectories(time_1, time_2, plan_2[1:4,:])
     d_vec = np.linalg.norm(traj_1 - traj_2, 2, 0)
     if any(d_vec <= r_collision):
+        return False
+    else:
+        return True
+
+
+def check_obs_collision(plan, obs, r_collision):
+    """Check a plan against a single obstacle for collision.
+
+    Obstacles are cylinders represented as (center, radius), and 
+    assumed to have infinite height for now.
+
+    Parameters
+    ----------
+    plan : np.array
+    obs : tuple
+
+    Returns
+    -------
+    bool
+        True if the plan is safe, False is there is a collision
+    """
+    c_obs,r_obs = obs
+    traj = plan[1:4,:]
+    d_vec = np.linalg.norm(traj - c_obs, 2, 0)
+    if any(d_vec <= r_collision + r_obs):
         return False
     else:
         return True
